@@ -1,0 +1,19 @@
+# PDFs — large, not source code
+*.pdf
+
+# Generated outputs
+results/
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+
+# Claude internal
+.claude/
+
+# OS
+.DS_Store
+Thumbs.db
