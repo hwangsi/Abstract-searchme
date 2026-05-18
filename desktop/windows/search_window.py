@@ -36,6 +36,8 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+import difflib
+
 from core.search.matcher import matches, matches_affiliation
 
 # NOTE: adjust these three imports to match your actual exporter module
@@ -53,18 +55,30 @@ ROLE_LABEL = {
     "speaker": "발표자",
     "chair": "좌장",
     "discussant": "토론자",
+    "panelist": "패널",
 }
 
 ROLE_COLOR = {
     "speaker": "#1e6fbf",       # blue
     "chair": "#2c7a3e",         # green
     "discussant": "#c2671a",    # orange
+    "panelist": "#7b2d8b",      # purple
 }
 
 
 def _sanitize_filename(name: str) -> str:
     """Strip characters Windows refuses in filenames."""
     return re.sub(r'[\\/:*?"<>|]+', "_", name).strip() or "schedule"
+
+
+def _find_bold_author(person: str, authors_all: list[str]) -> str:
+    """Return the entry in authors_all that best matches person (exact first, then fuzzy)."""
+    if not person or not authors_all:
+        return ''
+    if person in authors_all:
+        return person
+    matches_close = difflib.get_close_matches(person, authors_all, n=1, cutoff=0.6)
+    return matches_close[0] if matches_close else ''
 
 
 # ---------------------------------------------------------------------------
@@ -82,6 +96,7 @@ class SessionCard(QFrame):
                 background-color: #ffffff;
                 border: 1px solid #d0d0d0;
                 border-radius: 6px;
+                font-size: 14pt;
             }
         """)
 
@@ -151,15 +166,29 @@ class SessionCard(QFrame):
             talk_label.setStyleSheet("color: #333333;")
             layout.addWidget(talk_label)
 
-        # --- footer: person · affiliation -----------------------------------
+        # --- footer: full author list (bolded: matched person) --------------
         person = record.get("person") or ""
+        authors_all: list[str] = record.get("authors_all") or []
+        display_authors = authors_all if authors_all else ([person] if person else [])
+
+        if display_authors:
+            bold_name = _find_bold_author(person, display_authors)
+            parts = []
+            for a in display_authors:
+                parts.append(f'<b>{a}</b>' if a == bold_name else a)
+            authors_label = QLabel(', '.join(parts))
+            authors_label.setTextFormat(Qt.RichText)
+            authors_label.setWordWrap(True)
+            authors_label.setStyleSheet("color: #555555;")
+            layout.addWidget(authors_label)
+
+        # --- footer: affiliation --------------------------------------------
         affiliation = record.get("affiliation") or ""
-        footer_parts = [p for p in (person, affiliation) if p]
-        if footer_parts:
-            footer_label = QLabel(" · ".join(footer_parts))
-            footer_label.setStyleSheet("color: #888888; font-size: 11px;")
-            footer_label.setWordWrap(True)
-            layout.addWidget(footer_label)
+        if affiliation:
+            affil_label = QLabel(affiliation)
+            affil_label.setStyleSheet("color: #888888;")
+            affil_label.setWordWrap(True)
+            layout.addWidget(affil_label)
 
         # --- meta: page · match score ---------------------------------------
         page = record.get("page")
@@ -175,7 +204,7 @@ class SessionCard(QFrame):
         if meta_bits:
             meta_label = QLabel(" · ".join(meta_bits))
             meta_label.setAlignment(Qt.AlignRight)
-            meta_label.setStyleSheet("color: #aaaaaa; font-size: 10px;")
+            meta_label.setStyleSheet("color: #aaaaaa; font-size: 11pt;")
             layout.addWidget(meta_label)
 
 

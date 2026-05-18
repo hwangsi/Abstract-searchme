@@ -282,12 +282,14 @@ def _parse_index_page(lines: list[str], records: list[dict]) -> None:
             continue
 
         for idx, author in enumerate(authors):
-            records.append(_make_rec(
+            rec = _make_rec(
                 page=page_ref, date='', time='', room='',
                 session_title='', role='speaker',
                 is_primary=(idx == 0), person=author, affiliation='',
                 talk_title=title, session_code=code,
-            ))
+            )
+            rec['authors_all'] = authors
+            records.append(rec)
 
 
 def _parse_inline_index_page(lines: list[str], records: list[dict]) -> None:
@@ -359,12 +361,14 @@ def _parse_inline_index_page(lines: list[str], records: list[dict]) -> None:
             continue
 
         for idx, author in enumerate(authors):
-            records.append(_make_rec(
+            rec = _make_rec(
                 page=page_ref, date='', time='', room='',
                 session_title='', role='speaker',
                 is_primary=(idx == 0), person=author, affiliation='',
                 talk_title=title, session_code=code,
-            ))
+            )
+            rec['authors_all'] = authors
+            records.append(rec)
 
 
 # ── main entry point ──────────────────────────────────────────────────────────
