@@ -21,6 +21,7 @@ from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QFont
 from PySide6.QtWidgets import (
     QApplication,
+    QButtonGroup,
     QFileDialog,
     QFrame,
     QHBoxLayout,
@@ -28,13 +29,14 @@ from PySide6.QtWidgets import (
     QLineEdit,
     QMessageBox,
     QPushButton,
+    QRadioButton,
     QScrollArea,
     QSizePolicy,
     QVBoxLayout,
     QWidget,
 )
 
-from core.search.matcher import matches
+from core.search.matcher import matches, matches_affiliation
 
 # NOTE: adjust these three imports to match your actual exporter module
 # names if they differ (e.g. core.exporters.text vs core.exporters.text_exporter).
@@ -252,7 +254,18 @@ class SearchWindow(QWidget):
         layout.setContentsMargins(12, 12, 12, 12)
         layout.setSpacing(8)
 
-        layout.addWidget(QLabel("이름:"))
+        self._radio_name = QRadioButton("이름으로")
+        self._radio_affil = QRadioButton("소속으로")
+        self._radio_name.setChecked(True)
+
+        self._mode_group = QButtonGroup(self)
+        self._mode_group.addButton(self._radio_name, 0)
+        self._mode_group.addButton(self._radio_affil, 1)
+        self._mode_group.idClicked.connect(self._on_mode_changed)
+
+        layout.addWidget(self._radio_name)
+        layout.addWidget(self._radio_affil)
+        layout.addSpacing(8)
 
         self.search_input = QLineEdit()
         self.search_input.setPlaceholderText("예: Sung Hwang / 홍길동")
@@ -351,6 +364,17 @@ class SearchWindow(QWidget):
     def _on_query_changed(self, text: str) -> None:
         self.search_btn.setEnabled(bool(text.strip()))
 
+    def _on_mode_changed(self, mode_id: int) -> None:
+        if mode_id == 0:
+            self.search_input.setPlaceholderText("예: Sung Hwang / 홍길동")
+            self.count_label.setText("이름을 입력하고 검색하세요.")
+        else:
+            self.search_input.setPlaceholderText("예: Seoul National / Bundang / SNUBH")
+            self.count_label.setText("소속을 입력하고 검색하세요.")
+        self._clear_results()
+        self._current_results = []
+        self._set_export_enabled(False)
+
     def _on_search(self) -> None:
         query = self.search_input.text().strip()
         if not query:
@@ -359,10 +383,15 @@ class SearchWindow(QWidget):
             QMessageBox.warning(self, "검색 불가", "로드된 레코드가 없습니다.")
             return
 
+        mode = self._mode_group.checkedId()  # 0 = name, 1 = affiliation
+
         QApplication.setOverrideCursor(Qt.WaitCursor)
         try:
             try:
-                results = matches(query, self._records)
+                if mode == 1:
+                    results = matches_affiliation(query, self._records)
+                else:
+                    results = matches(query, self._records)
             except Exception as exc:
                 QMessageBox.critical(
                     self, "검색 오류", f"검색 중 오류 발생:\n{exc}"
@@ -375,11 +404,12 @@ class SearchWindow(QWidget):
         self._current_query = query
         self._render_results(results)
 
+        mode_label = "소속" if mode == 1 else "이름"
         if results:
-            self.count_label.setText(f"'{query}' 검색 결과: {len(results)}건")
+            self.count_label.setText(f"'{query}' {mode_label} 검색 결과: {len(results)}건")
             self._set_export_enabled(True)
         else:
-            self.count_label.setText(f"'{query}' 검색 결과: 0건")
+            self.count_label.setText(f"'{query}' {mode_label} 검색 결과: 0건")
             self._set_export_enabled(False)
 
     def _render_results(self, results: list[dict]) -> None:

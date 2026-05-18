@@ -32,3 +32,28 @@ def matches(
             hits.append({**rec, "_score": round(s, 1)})
     hits.sort(key=lambda x: -x["_score"])
     return hits
+
+
+def matches_affiliation(
+    query: str,
+    records: list[dict],
+    threshold: float = 70.0,
+) -> list[dict]:
+    """Return records where `affiliation` tokens match `query`.
+
+    Uses token_set_ratio so partial institution names work:
+      "Seoul National" → "Seoul National University Bundang Hospital" (score 100)
+      "Bundang"        → same                                         (score 100)
+    Threshold is lower than name matching (70 vs 80) to accommodate
+    partial institution name queries.
+    """
+    hits = []
+    for rec in records:
+        affiliation = rec.get("affiliation", "")
+        if not affiliation:
+            continue
+        s = score(query, affiliation)
+        if s >= threshold:
+            hits.append({**rec, "_score": round(s, 1)})
+    hits.sort(key=lambda x: -x["_score"])
+    return hits
