@@ -13,7 +13,7 @@ import re
 from pathlib import Path
 from typing import Any
 
-from parsers.pdf_parser import extract_lines
+from core.parsers.pdf_parser import extract_lines
 
 # ── patterns ──────────────────────────────────────────────────────────────────
 

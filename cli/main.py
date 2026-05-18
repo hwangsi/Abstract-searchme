@@ -1,7 +1,7 @@
 """CLI entry point.
 
 Usage:
-    python -m search.cli --pdf <path> --name "<query>" [--threshold 80] [--save]
+    python -m cli.main --pdf <path> --name "<query>" [--threshold 80] [--save]
 """
 
 import argparse
@@ -13,7 +13,7 @@ from pathlib import Path
 sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
 sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding="utf-8", errors="replace")
 
-from main import search_pdf
+from core.main import search_pdf
 
 
 def _parse_args():
@@ -43,7 +43,7 @@ def main():
 
     event_meta = {}
     if args.save or args.export_html or args.export_ics or args.ics or args.text or args.xlsx:
-        from main import _detect_adapter
+        from core.main import _detect_adapter
         adapter_mod = _detect_adapter(pdf_path)
         if adapter_mod:
             event_meta = getattr(adapter_mod, "EVENT_META", {})
@@ -51,7 +51,7 @@ def main():
             if adapter_mod:
                 all_records = adapter_mod.parse(pdf_path)
             else:
-                from adapters.generic import parse as gp
+                from core.adapters.generic import parse as gp
                 all_records = gp(pdf_path)
             out = Path("data/sessions") / (pdf_path.stem + ".json")
             out.parent.mkdir(parents=True, exist_ok=True)
@@ -65,17 +65,17 @@ def main():
     print(f"[3/3] Results:", file=sys.stderr)
 
     if args.export_html:
-        from exporters.html import export as html_export
+        from core.exporters.html import export as html_export
         html_export(hits, args.export_html, query=args.name, event_meta=event_meta)
         print(f"      -> HTML saved to {args.export_html}", file=sys.stderr)
 
     if args.export_ics:
-        from exporters.ics import export as ics_export
+        from core.exporters.ics import export as ics_export
         ics_export(hits, args.export_ics, event_meta=event_meta, query=args.name)
         print(f"      -> ICS saved to {args.export_ics}", file=sys.stderr)
 
     if args.ics:
-        from exporters.ics_exporter import export_ics
+        from core.exporters.ics_exporter import export_ics
         export_ics(
             hits,
             event_meta.get("event_timezone", "UTC"),
@@ -85,7 +85,7 @@ def main():
         print(f"      -> ICS saved to {args.ics}", file=sys.stderr)
 
     if args.text:
-        from exporters.text_exporter import export_text
+        from core.exporters.text_exporter import export_text
         export_text(
             hits,
             event_meta.get("event_timezone", "UTC"),
@@ -96,7 +96,7 @@ def main():
         print(f"      -> text saved to {args.text}", file=sys.stderr)
 
     if args.xlsx:
-        from exporters.xlsx_exporter import export_xlsx
+        from core.exporters.xlsx_exporter import export_xlsx
         export_xlsx(
             hits,
             event_meta.get("event_timezone", "UTC"),

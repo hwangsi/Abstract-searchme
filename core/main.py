@@ -5,9 +5,9 @@ import re
 from pathlib import Path
 import fitz
 
-from adapters import kcr, icr
-from adapters.generic import parse as generic_parse
-from search.matcher import matches
+from core.adapters import kcr, icr
+from core.adapters.generic import parse as generic_parse
+from core.search.matcher import matches
 
 
 def _detect_adapter(pdf_path: Path):

@@ -1,7 +1,7 @@
 """Generate a standalone viewer.html from a sessions.json file.
 
 Usage:
-    python -m exporters.html_exporter <sessions.json> [<output.html>]
+    python -m core.exporters.html_exporter <sessions.json> [<output.html>]
 """
 import json
 import sys
@@ -246,12 +246,12 @@ function render(query){
   if(!query){
     cntEl.textContent=sessions.length.toLocaleString()+' sessions loaded — type a name to search';
     cardsEl.appendChild(el('p','hint',
-      'e.g. “sung hwang”, “hwang sung”, “s hwang”'));
+      'e.g. "sung hwang", "hwang sung", "s hwang"'));
     return;
   }
 
   var hits=sessions.filter(function(s){return tokenMatch(query,s);});
-  cntEl.textContent=hits.length+' result'+(hits.length!==1?'s':'')+' for “'+query+'”';
+  cntEl.textContent=hits.length+' result'+(hits.length!==1?'s':'')+' for "'+query+'"';
 
   if(!hits.length){
     cardsEl.appendChild(el('p','no-results','No results found.'));

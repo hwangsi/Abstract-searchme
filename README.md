@@ -25,7 +25,7 @@ Designed for radiologists attending KCR and ICR, but extensible to other confere
 pip install -r requirements.txt
 
 # Search ICR 2026 for "Sung Hwang" — export all formats
-python -m search.cli \
+python -m cli.main \
   --pdf "data/pdfs/EN-ICR 2026 f. prog_110526.pdf" \
   --name "Sung Hwang" \
   --ics  results/sung_hwang.ics \
@@ -33,7 +33,7 @@ python -m search.cli \
   --xlsx results/sung_hwang.xlsx
 
 # Search KCR 2025
-python -m search.cli \
+python -m cli.main \
   --pdf "data/pdfs/KCR2025_Program_Book.pdf" \
   --name "Jin Mo Goo" \
   --ics  results/jin_mo_goo.ics \
@@ -46,7 +46,7 @@ python -m search.cli \
 ## CLI Options
 
 ```
-python -m search.cli
+python -m cli.main
   --pdf <path>        PDF path (required)
   --name "<query>"    Name to search (required)
   --threshold 80      Fuzzy match threshold 0–100 (default 80)
@@ -67,10 +67,10 @@ Build a self-contained viewer from a full sessions JSON (real-time search, no se
 
 ```bash
 # Parse and save all sessions first
-python -m search.cli --pdf data/pdfs/KCR2025_Program_Book.pdf --name . --save
+python -m cli.main --pdf data/pdfs/KCR2025_Program_Book.pdf --name . --save
 
 # Build viewer
-python -m exporters.html_exporter data/sessions/KCR2025_Program_Book.json viewer.html
+python -m core.exporters.html_exporter data/sessions/KCR2025_Program_Book.json viewer.html
 ```
 
 Open `viewer.html` in any browser. Search by name, session code, room, or role.
@@ -110,22 +110,28 @@ ICR 2026 — Cartagena, Colombia (America/Bogota)
 
 ```
 abstract-searcher/
-├── adapters/
-│   ├── icr.py          ICR 2026 PDF layout parser
-│   ├── kcr.py          KCR 2025 PDF layout parser
-│   └── generic.py      Fallback parser
-├── exporters/
-│   ├── ics_exporter.py  RFC 5545 ICS with VTIMEZONE
-│   ├── text_exporter.py Plain text export
-│   ├── xlsx_exporter.py Excel export (openpyxl)
-│   └── html_exporter.py Standalone HTML viewer
-├── search/
-│   ├── cli.py          CLI entry point
-│   └── matcher.py      Fuzzy name matching (rapidfuzz)
+├── core/
+│   ├── adapters/
+│   │   ├── icr.py          ICR 2026 PDF layout parser
+│   │   ├── kcr.py          KCR 2025 PDF layout parser
+│   │   └── generic.py      Fallback parser
+│   ├── exporters/
+│   │   ├── ics_exporter.py  RFC 5545 ICS with VTIMEZONE
+│   │   ├── text_exporter.py Plain text export
+│   │   ├── xlsx_exporter.py Excel export (openpyxl)
+│   │   └── html_exporter.py Standalone HTML viewer
+│   ├── search/
+│   │   └── matcher.py      Fuzzy name matching (rapidfuzz)
+│   ├── parsers/
+│   │   └── pdf_parser.py   PyMuPDF text extraction
+│   └── main.py             Adapter auto-detection + search_pdf()
+├── cli/
+│   └── main.py             CLI entry point (python -m cli.main)
+├── desktop/                PySide6 GUI app (Stage 5+)
 ├── data/
-│   ├── pdfs/           Input PDFs (not tracked in git)
-│   └── sessions/       Parsed session JSON + viewer HTML
-├── main.py             Adapter auto-detection + search_pdf()
+│   ├── pdfs/               Input PDFs (not tracked in git)
+│   └── sessions/           Parsed session JSON + viewer HTML
+├── pyproject.toml
 └── requirements.txt
 ```
 
@@ -146,9 +152,9 @@ Install: `pip install -r requirements.txt`
 
 ## Adding a New Conference
 
-1. Create `adapters/<conf>.py` with a `parse(pdf_path) -> list[dict]` function and an `EVENT_META` dict
-2. Add timezone to `_VTIMEZONE` in `exporters/ics_exporter.py` if not already present
-3. Register the adapter in `main._detect_adapter()`
+1. Create `core/adapters/<conf>.py` with a `parse(pdf_path) -> list[dict]` function and an `EVENT_META` dict
+2. Add timezone to `_VTIMEZONE` in `core/exporters/ics_exporter.py` if not already present
+3. Register the adapter in `core/main._detect_adapter()`
 
 Each record returned by `parse()` must have these fields:
 
