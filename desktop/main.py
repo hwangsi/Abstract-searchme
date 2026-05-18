@@ -33,7 +33,7 @@ def main() -> None:
         search_win.hide()
 
     upload_win.ready.connect(on_ready)
-    search_win.back_clicked.connect(go_back)
+    search_win.back_requested.connect(go_back)
 
     upload_win.show()
     sys.exit(app.exec())

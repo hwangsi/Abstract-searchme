@@ -1,75 +1,490 @@
-"""Window 2: 검색 창 — 5b 플레이스홀더, 5c에서 완성."""
+"""
+desktop/windows/search_window.py
+
+Stage 5c: Window 2 — search + result cards + TXT/XLSX/ICS export.
+
+Receives parsed records from UploadWindow via:
+    upload_window.ready.connect(search_window.load)
+
+Renders one SessionCard per match from core.search.matcher.matches(),
+and exports the current result set via the three core.exporters
+functions.
+"""
+
 from __future__ import annotations
 
+import re
 from pathlib import Path
+from typing import Optional
 
 from PySide6.QtCore import Qt, Signal
-from PySide6.QtWidgets import QLabel, QPushButton, QVBoxLayout, QWidget
+from PySide6.QtGui import QFont
+from PySide6.QtWidgets import (
+    QApplication,
+    QFileDialog,
+    QFrame,
+    QHBoxLayout,
+    QLabel,
+    QLineEdit,
+    QMessageBox,
+    QPushButton,
+    QScrollArea,
+    QSizePolicy,
+    QVBoxLayout,
+    QWidget,
+)
 
+from core.search.matcher import matches
+
+# NOTE: adjust these three imports to match your actual exporter module
+# names if they differ (e.g. core.exporters.text vs core.exporters.text_exporter).
+from core.exporters.text_exporter import export_text
+from core.exporters.xlsx_exporter import export_xlsx
+from core.exporters.ics_exporter import export_ics
+
+
+# ---------------------------------------------------------------------------
+# role display
+# ---------------------------------------------------------------------------
+
+ROLE_LABEL = {
+    "speaker": "발표자",
+    "chair": "좌장",
+    "discussant": "토론자",
+}
+
+ROLE_COLOR = {
+    "speaker": "#1e6fbf",       # blue
+    "chair": "#2c7a3e",         # green
+    "discussant": "#c2671a",    # orange
+}
+
+
+def _sanitize_filename(name: str) -> str:
+    """Strip characters Windows refuses in filenames."""
+    return re.sub(r'[\\/:*?"<>|]+', "_", name).strip() or "schedule"
+
+
+# ---------------------------------------------------------------------------
+# SessionCard
+# ---------------------------------------------------------------------------
+
+class SessionCard(QFrame):
+    """One result card for a single matched record."""
+
+    def __init__(self, record: dict, parent: Optional[QWidget] = None) -> None:
+        super().__init__(parent)
+        self.setObjectName("SessionCard")
+        self.setStyleSheet("""
+            #SessionCard {
+                background-color: #ffffff;
+                border: 1px solid #d0d0d0;
+                border-radius: 6px;
+            }
+        """)
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(14, 12, 14, 12)
+        layout.setSpacing(6)
+
+        # --- top row: role badge + date·time + (1저자 표시) -----------------
+        top_row = QHBoxLayout()
+        top_row.setSpacing(10)
+
+        role = (record.get("role") or "").lower()
+        role_text = ROLE_LABEL.get(role, role or "—")
+        role_color = ROLE_COLOR.get(role, "#666666")
+
+        badge = QLabel(role_text)
+        badge.setStyleSheet(f"""
+            background-color: {role_color};
+            color: white;
+            padding: 2px 10px;
+            border-radius: 10px;
+            font-weight: bold;
+        """)
+        badge.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
+        top_row.addWidget(badge)
+
+        date = record.get("date") or ""
+        time = record.get("time") or ""
+        when = " · ".join(x for x in (date, time) if x)
+        when_label = QLabel(when)
+        wf = QFont()
+        wf.setBold(True)
+        when_label.setFont(wf)
+        top_row.addWidget(when_label)
+
+        top_row.addStretch()
+
+        if record.get("is_primary_author"):
+            primary = QLabel("★ 1저자")
+            primary.setStyleSheet("color: #c97b00; font-weight: bold;")
+            top_row.addWidget(primary)
+
+        layout.addLayout(top_row)
+
+        # --- room ------------------------------------------------------------
+        room = record.get("room") or ""
+        if room:
+            room_label = QLabel(f"📍 {room}")
+            room_label.setStyleSheet("color: #444444;")
+            layout.addWidget(room_label)
+
+        # --- session code + title -------------------------------------------
+        session_code = record.get("session_code") or ""
+        session_title = record.get("session_title") or ""
+        session_parts = [p for p in (session_code, session_title) if p]
+        if session_parts:
+            session_label = QLabel(" — ".join(session_parts))
+            session_label.setWordWrap(True)
+            session_label.setStyleSheet("color: #222222; font-weight: 500;")
+            layout.addWidget(session_label)
+
+        # --- talk title (mostly for speakers) -------------------------------
+        talk_title = record.get("talk_title") or ""
+        if talk_title:
+            talk_label = QLabel(f"🎤 {talk_title}")
+            talk_label.setWordWrap(True)
+            talk_label.setStyleSheet("color: #333333;")
+            layout.addWidget(talk_label)
+
+        # --- footer: person · affiliation -----------------------------------
+        person = record.get("person") or ""
+        affiliation = record.get("affiliation") or ""
+        footer_parts = [p for p in (person, affiliation) if p]
+        if footer_parts:
+            footer_label = QLabel(" · ".join(footer_parts))
+            footer_label.setStyleSheet("color: #888888; font-size: 11px;")
+            footer_label.setWordWrap(True)
+            layout.addWidget(footer_label)
+
+        # --- meta: page · match score ---------------------------------------
+        page = record.get("page")
+        score = record.get("_score")
+        meta_bits: list[str] = []
+        if page is not None:
+            meta_bits.append(f"p.{page}")
+        if score is not None:
+            try:
+                meta_bits.append(f"match {float(score):.0f}")
+            except (TypeError, ValueError):
+                pass
+        if meta_bits:
+            meta_label = QLabel(" · ".join(meta_bits))
+            meta_label.setAlignment(Qt.AlignRight)
+            meta_label.setStyleSheet("color: #aaaaaa; font-size: 10px;")
+            layout.addWidget(meta_label)
+
+
+# ---------------------------------------------------------------------------
+# SearchWindow
+# ---------------------------------------------------------------------------
 
 class SearchWindow(QWidget):
-    """Window 2: 이름/소속 검색 (5c에서 완성)."""
+    """Window 2: search input + result cards + export bar."""
 
-    back_clicked = Signal()
+    back_requested = Signal()  # emitted when user clicks "다시 열기"
 
-    def __init__(self, parent=None) -> None:
+    def __init__(self, parent: Optional[QWidget] = None) -> None:
         super().__init__(parent)
-        self.setWindowTitle("Abstract Searcher")
-        self.setMinimumSize(700, 520)
-        self._records: list = []
+
+        # data state
+        self._records: list[dict] = []
         self._event_meta: dict = {}
-        self._pdf_path: Path | None = None
-        self._setup_ui()
+        self._pdf_path: Optional[Path] = None
+        self._current_results: list[dict] = []
+        self._current_query: str = ""
 
-    # ── 공개 API ──────────────────────────────────────────────────────────────
+        self.setWindowTitle("Abstract Searcher")
+        self.resize(760, 760)
 
-    def load(self, records: list, event_meta: dict, pdf_path: Path) -> None:
-        """새 PDF 파싱 결과를 불러온다."""
-        self._records    = records
-        self._event_meta = event_meta
-        self._pdf_path   = pdf_path
-        self._refresh_header()
+        self._build_ui()
 
-    # ── UI 구성 ───────────────────────────────────────────────────────────────
+    # -- UI ------------------------------------------------------------------
 
-    def _setup_ui(self) -> None:
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(32, 28, 32, 28)
-        layout.setSpacing(14)
+    def _build_ui(self) -> None:
+        root = QVBoxLayout(self)
+        root.setContentsMargins(0, 0, 0, 0)
+        root.setSpacing(0)
 
-        self._header = QLabel()
-        self._header.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self._header.setWordWrap(True)
-        self._header.setStyleSheet("font-size: 15px; color: #1a1a2e;")
-        layout.addWidget(self._header)
+        root.addWidget(self._build_header())
+        root.addWidget(self._build_search_bar())
+        root.addWidget(self._build_count_bar())
+        root.addWidget(self._build_results_area(), 1)
+        root.addWidget(self._build_export_bar())
+
+    def _build_header(self) -> QWidget:
+        bar = QFrame()
+        bar.setStyleSheet(
+            "background-color: #f4f5f7; border-bottom: 1px solid #d8d8d8;"
+        )
+        layout = QHBoxLayout(bar)
+        layout.setContentsMargins(12, 10, 12, 10)
+
+        self.back_btn = QPushButton("← 다시 열기")
+        self.back_btn.setCursor(Qt.PointingHandCursor)
+        self.back_btn.clicked.connect(self.back_requested.emit)
+        layout.addWidget(self.back_btn)
+
+        layout.addSpacing(8)
+
+        self.event_label = QLabel("")
+        ef = QFont()
+        ef.setBold(True)
+        self.event_label.setFont(ef)
+        layout.addWidget(self.event_label)
 
         layout.addStretch()
 
-        btn_back = QPushButton("← 다른 PDF 열기")
-        btn_back.setFixedWidth(180)
-        btn_back.setStyleSheet(
-            "QPushButton {"
-            "  background: #f0f2f5; color: #333;"
-            "  border: 1px solid #ccc; border-radius: 6px;"
-            "  font-size: 13px; padding: 7px 14px;"
-            "}"
-            "QPushButton:hover { background: #e2e6ea; }"
-        )
-        btn_back.clicked.connect(self.back_clicked)
-        layout.addWidget(btn_back, alignment=Qt.AlignmentFlag.AlignLeft)
+        self.pdf_label = QLabel("")
+        self.pdf_label.setStyleSheet("color: #666666;")
+        layout.addWidget(self.pdf_label)
 
-    def _refresh_header(self) -> None:
-        name = (
-            self._event_meta.get("event_name")
-            or (self._pdf_path.name if self._pdf_path else "")
-        )
-        location = self._event_meta.get("event_location", "")
-        tz       = self._event_meta.get("event_timezone", "")
-        meta     = " — ".join(filter(None, [location, f"({tz})" if tz else ""]))
-        header   = f"{name}  {meta}" if meta else name
+        return bar
 
-        self._header.setText(
-            f"<b>{header}</b><br><br>"
-            f"{len(self._records):,}건 파싱됨<br><br>"
-            "<span style='color:#aaa'>검색 UI는 5c에서 구현됩니다.</span>"
+    def _build_search_bar(self) -> QWidget:
+        bar = QFrame()
+        bar.setStyleSheet(
+            "background-color: #ffffff; border-bottom: 1px solid #e0e0e0;"
+        )
+        layout = QHBoxLayout(bar)
+        layout.setContentsMargins(12, 12, 12, 12)
+        layout.setSpacing(8)
+
+        layout.addWidget(QLabel("이름:"))
+
+        self.search_input = QLineEdit()
+        self.search_input.setPlaceholderText("예: Sung Hwang / 홍길동")
+        self.search_input.returnPressed.connect(self._on_search)
+        self.search_input.textChanged.connect(self._on_query_changed)
+        layout.addWidget(self.search_input, 1)
+
+        self.search_btn = QPushButton("검색")
+        self.search_btn.setDefault(True)
+        self.search_btn.setEnabled(False)
+        self.search_btn.clicked.connect(self._on_search)
+        layout.addWidget(self.search_btn)
+
+        return bar
+
+    def _build_count_bar(self) -> QWidget:
+        bar = QFrame()
+        bar.setStyleSheet(
+            "background-color: #fafafa; border-bottom: 1px solid #ececec;"
+        )
+        layout = QHBoxLayout(bar)
+        layout.setContentsMargins(14, 8, 14, 8)
+
+        self.count_label = QLabel("이름을 입력하고 검색하세요.")
+        self.count_label.setStyleSheet("color: #555555;")
+        layout.addWidget(self.count_label)
+        layout.addStretch()
+
+        return bar
+
+    def _build_results_area(self) -> QWidget:
+        self.scroll = QScrollArea()
+        self.scroll.setWidgetResizable(True)
+        self.scroll.setStyleSheet("background-color: #f0f0f2; border: none;")
+
+        self.results_container = QWidget()
+        self.results_layout = QVBoxLayout(self.results_container)
+        self.results_layout.setContentsMargins(14, 14, 14, 14)
+        self.results_layout.setSpacing(10)
+        self.results_layout.addStretch()  # cards stack from top
+
+        self.scroll.setWidget(self.results_container)
+        return self.scroll
+
+    def _build_export_bar(self) -> QWidget:
+        bar = QFrame()
+        bar.setStyleSheet(
+            "background-color: #f4f5f7; border-top: 1px solid #d8d8d8;"
+        )
+        layout = QHBoxLayout(bar)
+        layout.setContentsMargins(12, 10, 12, 10)
+        layout.setSpacing(10)
+
+        layout.addStretch()
+
+        self.txt_btn = QPushButton("TXT 저장")
+        self.txt_btn.clicked.connect(self._on_export_txt)
+        layout.addWidget(self.txt_btn)
+
+        self.xlsx_btn = QPushButton("XLSX 저장")
+        self.xlsx_btn.clicked.connect(self._on_export_xlsx)
+        layout.addWidget(self.xlsx_btn)
+
+        self.ics_btn = QPushButton("ICS 저장")
+        self.ics_btn.clicked.connect(self._on_export_ics)
+        layout.addWidget(self.ics_btn)
+
+        self._set_export_enabled(False)
+
+        return bar
+
+    # -- public API ----------------------------------------------------------
+
+    def load(self, records: list[dict], event_meta: dict, pdf_path: Path) -> None:
+        """Called by UploadWindow.ready signal after parsing succeeds."""
+        self._records = records or []
+        self._event_meta = event_meta or {}
+        self._pdf_path = Path(pdf_path) if pdf_path else None
+
+        self.event_label.setText(self._event_meta.get("event_name", "") or "")
+        self.pdf_label.setText(self._pdf_path.name if self._pdf_path else "")
+
+        # reset search state
+        self.search_input.clear()
+        self.search_input.setFocus()
+        self._clear_results()
+        self.count_label.setText(
+            f"총 {len(self._records)}개 레코드 로드됨. 이름을 입력하고 검색하세요."
+        )
+        self._current_results = []
+        self._current_query = ""
+        self._set_export_enabled(False)
+
+    # -- handlers ------------------------------------------------------------
+
+    def _on_query_changed(self, text: str) -> None:
+        self.search_btn.setEnabled(bool(text.strip()))
+
+    def _on_search(self) -> None:
+        query = self.search_input.text().strip()
+        if not query:
+            return
+        if not self._records:
+            QMessageBox.warning(self, "검색 불가", "로드된 레코드가 없습니다.")
+            return
+
+        QApplication.setOverrideCursor(Qt.WaitCursor)
+        try:
+            try:
+                results = matches(query, self._records)
+            except Exception as exc:
+                QMessageBox.critical(
+                    self, "검색 오류", f"검색 중 오류 발생:\n{exc}"
+                )
+                return
+        finally:
+            QApplication.restoreOverrideCursor()
+
+        self._current_results = results
+        self._current_query = query
+        self._render_results(results)
+
+        if results:
+            self.count_label.setText(f"'{query}' 검색 결과: {len(results)}건")
+            self._set_export_enabled(True)
+        else:
+            self.count_label.setText(f"'{query}' 검색 결과: 0건")
+            self._set_export_enabled(False)
+
+    def _render_results(self, results: list[dict]) -> None:
+        self._clear_results()
+        for rec in results:
+            card = SessionCard(rec)
+            # insert before the trailing stretch
+            self.results_layout.insertWidget(
+                self.results_layout.count() - 1, card
+            )
+        self.scroll.verticalScrollBar().setValue(0)
+
+    def _clear_results(self) -> None:
+        while self.results_layout.count() > 1:  # keep trailing stretch
+            item = self.results_layout.takeAt(0)
+            w = item.widget()
+            if w is not None:
+                w.deleteLater()
+
+    def _set_export_enabled(self, enabled: bool) -> None:
+        for btn in (self.txt_btn, self.xlsx_btn, self.ics_btn):
+            btn.setEnabled(enabled)
+
+    # -- export --------------------------------------------------------------
+
+    def _default_export_name(self, ext: str) -> str:
+        event = self._event_meta.get("event_name", "schedule") or "schedule"
+        base = _sanitize_filename(
+            f"{event}_{self._current_query}_schedule"
+        )
+        return f"{base}.{ext}"
+
+    def _ask_save_path(self, ext: str, label: str) -> Optional[Path]:
+        default = self._default_export_name(ext)
+        start_dir = str(self._pdf_path.parent) if self._pdf_path else ""
+        start_path = (
+            str(Path(start_dir) / default) if start_dir else default
+        )
+
+        path_str, _ = QFileDialog.getSaveFileName(
+            self,
+            f"{label} 저장",
+            start_path,
+            f"{label} files (*.{ext})",
+        )
+        if not path_str:
+            return None
+        path = Path(path_str)
+        if path.suffix.lower() != f".{ext}":
+            path = path.with_suffix(f".{ext}")
+        return path
+
+    def _on_export_txt(self) -> None:
+        path = self._ask_save_path("txt", "TXT")
+        if not path:
+            return
+        try:
+            export_text(
+                self._current_results,
+                self._event_meta.get("event_timezone", ""),
+                path,
+                event_name=self._event_meta.get("event_name", ""),
+                event_location=self._event_meta.get("event_location", ""),
+            )
+        except Exception as exc:
+            QMessageBox.critical(self, "TXT 저장 실패", str(exc))
+            return
+        QMessageBox.information(
+            self, "저장 완료", f"TXT 파일을 저장했습니다:\n{path}"
+        )
+
+    def _on_export_xlsx(self) -> None:
+        path = self._ask_save_path("xlsx", "XLSX")
+        if not path:
+            return
+        try:
+            export_xlsx(
+                self._current_results,
+                self._event_meta.get("event_timezone", ""),
+                path,
+                event_name=self._event_meta.get("event_name", ""),
+                event_location=self._event_meta.get("event_location", ""),
+                query=self._current_query,
+            )
+        except Exception as exc:
+            QMessageBox.critical(self, "XLSX 저장 실패", str(exc))
+            return
+        QMessageBox.information(
+            self, "저장 완료", f"XLSX 파일을 저장했습니다:\n{path}"
+        )
+
+    def _on_export_ics(self) -> None:
+        path = self._ask_save_path("ics", "ICS")
+        if not path:
+            return
+        try:
+            export_ics(
+                self._current_results,
+                self._event_meta.get("event_timezone", ""),
+                path,
+                event_name=self._event_meta.get("event_name", ""),
+            )
+        except Exception as exc:
+            QMessageBox.critical(self, "ICS 저장 실패", str(exc))
+            return
+        QMessageBox.information(
+            self, "저장 완료", f"ICS 파일을 저장했습니다:\n{path}"
         )
