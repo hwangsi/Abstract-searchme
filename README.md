@@ -2,7 +2,7 @@
 
 Search a conference program PDF by name and export your sessions to calendar, spreadsheet, or plain text.
 
-Designed for radiologists attending KCR and ICR, but extensible to other conferences.
+Tested for doctors attending KCR/ICR and GBCC, but extensible to other conferences.
 
 ---
 
