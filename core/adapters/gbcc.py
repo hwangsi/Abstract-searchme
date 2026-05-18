@@ -1,13 +1,16 @@
 """GBCC (Global Breast Cancer Conference) abstract book adapter.
 
-Two record sources parsed from the PDF:
+Three record sources parsed from the PDF:
 
-  1. Program pages  — lines with Speaker / Presenter / Moderator / Chair labels
+  1. Program pages  — lines with Speaker / Presenter / Moderator / Chair / Panelist labels
      Each entry:  role  |  name  |  abstract_ref_page  |  talk_title  |  affiliation
 
   2. Index pages   — abstract code blocks (PO/MO/OS/SS/IS/YI + digits)
      Each entry:  code  |  title  |  internal_page  |  comma-separated authors
      One record per author; is_primary_author=True only for the first.
+
+  3. Inline-code index pages — MOP/POD/etc. where code+title share one line
+     Format: 'MOPx-xx  Title text' then page_ref then comma-separated authors.
 
 Abstract body pages (Background/Methods/Results/...) are skipped; they
 duplicate the index data and contain References sections that would
@@ -30,9 +33,11 @@ EVENT_META = {
 
 _TIME_RE     = re.compile(r'^(\d{1,2}:\d{2}-\d{1,2}:\d{2})')
 _DATE_RE     = re.compile(r'((?:January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2}\s*\([A-Za-z]+\))', re.I)
-_ROLE_SOLO   = re.compile(r'^(Speaker|Presenter|Moderator|Chair|Co-chair|Discussant)\s*$', re.I)
+_ROLE_SOLO   = re.compile(r'^(Speaker|Presenter|Moderator|Chair|Co-chair|Discussant|Panelist)\s*$', re.I)
 _ROLE_INLINE = re.compile(r'^(Moderator|Chair|Co-chair|Discussant)\s{2,}(.+)', re.I)
-_CODE_RE     = re.compile(r'^(PO|MO|OS|SS|IS|YI|OP)\d{3,}$', re.I)
+_CODE_RE          = re.compile(r'^(PO|MO|OS|SS|IS|YI|OP)\d{3,}$', re.I)
+# Inline-code format: 'MOPx-xx  Title text' or 'PODx-xx  Title text' (code+title on one line)
+_INLINE_CODE_RE   = re.compile(r'^([A-Z]{2,4}\d{1,2}-\d{2,3})\s+(.+)', re.I)
 _PAGE_ONLY   = re.compile(r'^\d{2,4}$')
 _REF_HDR_RE  = re.compile(r'^References?\s*$', re.I)
 # Section-header strings that mark the end of an author block on index pages
@@ -50,6 +55,7 @@ ROLE_MAP = {
     'chair':      'chair',
     'co-chair':   'chair',
     'discussant': 'discussant',
+    'panelist':   'panelist',
 }
 
 
@@ -284,6 +290,83 @@ def _parse_index_page(lines: list[str], records: list[dict]) -> None:
             ))
 
 
+def _parse_inline_index_page(lines: list[str], records: list[dict]) -> None:
+    """Extract entries from MOP/POD-style index pages.
+
+    These pages use 'CODEx-xx  Title text' (code+title on one line, tab-separated
+    in the original PDF), followed by optional title continuation, a page-ref number,
+    and a comma-separated author list.  Example:
+        MOP3-02  Validation of the ASTRRA-derived Composite Risk Model...
+        Premenopausal HR-Positive Breast Cancer
+        226
+        Dahn Byun, ..., Jeong Eon Lee, ...
+    """
+    i = 0
+    n = len(lines)
+
+    while i < n:
+        line = lines[i]
+        m = _INLINE_CODE_RE.match(line)
+        if not m:
+            i += 1
+            continue
+
+        code = m.group(1)
+        title_parts = [m.group(2)]
+        i += 1
+
+        # Title continuation lines
+        while i < n:
+            c = lines[i]
+            if (_PAGE_ONLY.match(c) or _INLINE_CODE_RE.match(c)
+                    or _CODE_RE.match(c) or _REF_HDR_RE.match(c)
+                    or c in _INDEX_SKIP):
+                break
+            title_parts.append(c)
+            i += 1
+
+        # Page reference number
+        page_ref = 0
+        if i < n and _PAGE_ONLY.match(lines[i]):
+            try:
+                page_ref = int(lines[i])
+            except ValueError:
+                pass
+            i += 1
+
+        if not page_ref:
+            continue
+
+        # Author lines — same stop conditions as _parse_index_page
+        author_parts: list[str] = []
+        while i < n:
+            c = lines[i]
+            if _INLINE_CODE_RE.match(c) or _CODE_RE.match(c) or _REF_HDR_RE.match(c):
+                break
+            if c in _INDEX_SKIP:
+                i += 1
+                continue
+            if re.match(r'^\(\d+\)$', c):
+                break
+            if re.match(r'^[A-Z][a-zA-Z-]+,\s', c):  # Author-Index: "Surname, Firstname"
+                break
+            author_parts.append(c)
+            i += 1
+
+        title = ' '.join(title_parts)
+        authors = _split_authors(' '.join(author_parts))
+        if not authors:
+            continue
+
+        for idx, author in enumerate(authors):
+            records.append(_make_rec(
+                page=page_ref, date='', time='', room='',
+                session_title='', role='speaker',
+                is_primary=(idx == 0), person=author, affiliation='',
+                talk_title=title, session_code=code,
+            ))
+
+
 # ── main entry point ──────────────────────────────────────────────────────────
 
 def parse(pdf_path: str | Path) -> list[dict]:
@@ -295,13 +378,16 @@ def parse(pdf_path: str | Path) -> list[dict]:
         lines = [_clean(l) for l in raw_lines]
         lines = [l for l in lines if l]  # drop blank lines after cleaning
 
-        has_code = any(_CODE_RE.match(l) for l in lines)
-        has_role = any(_ROLE_SOLO.match(l) or _ROLE_INLINE.match(l) for l in lines)
+        has_code        = any(_CODE_RE.match(l) for l in lines)
+        has_inline_code = any(_INLINE_CODE_RE.match(l) for l in lines)
+        has_role        = any(_ROLE_SOLO.match(l) or _ROLE_INLINE.match(l) for l in lines)
 
         if has_code:
             _parse_index_page(lines, records)
         elif has_role:
             _parse_program_page(lines, records)
+        elif has_inline_code:
+            _parse_inline_index_page(lines, records)
         # abstract body pages (Background/Methods/...) → skipped
 
     doc.close()
