@@ -14,6 +14,13 @@ venv/
 # Claude internal
 .claude/
 
+# PyInstaller build artifacts
+dist/
+build/*.pkg
+build/AbstractSearcher/
+*.spec.bak
+__pycache__/
+
 # OS
 .DS_Store
 Thumbs.db
