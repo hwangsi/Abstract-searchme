@@ -7,6 +7,7 @@ import fitz
 
 from core.adapters import kcr, icr, gbcc
 from core.adapters.generic import parse as generic_parse
+from core.adapters.post import normalize_records
 from core.search.matcher import matches
 
 
@@ -59,6 +60,7 @@ def search_pdf(
         records = generic_parse(pdf_path)
         records = _wrap_generic(records)
 
+    records = normalize_records(records)
     hits = matches(query, records, threshold=threshold)
     return hits, adapter_name
 

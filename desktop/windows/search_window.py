@@ -37,6 +37,7 @@ from PySide6.QtWidgets import (
 )
 
 import difflib
+from collections import defaultdict
 
 from core.search.matcher import matches, matches_affiliation
 
@@ -79,6 +80,36 @@ def _find_bold_author(person: str, authors_all: list[str]) -> str:
         return person
     matches_close = difflib.get_close_matches(person, authors_all, n=1, cutoff=0.6)
     return matches_close[0] if matches_close else ''
+
+
+def _group_affil_results(hits: list[dict]) -> list[dict]:
+    """Collapse per-author affiliation hits into one card per talk.
+
+    Speaker records for the same talk are merged: the highest-scoring record
+    is kept as representative and a 'matched_persons' list is attached so
+    the card can bold every matched author.  Non-speaker records (chairs,
+    discussants, panelists) are kept as individual entries.
+    """
+    talk_groups: dict[tuple, list[dict]] = defaultdict(list)
+    ungrouped: list[dict] = []
+
+    for h in hits:
+        talk_title = (h.get("talk_title") or "").strip()
+        if h.get("role") == "speaker" and talk_title:
+            key = (h.get("date", ""), h.get("time", ""), h.get("room", ""), talk_title)
+            talk_groups[key].append(h)
+        else:
+            ungrouped.append(h)
+
+    result: list[dict] = []
+    for group in talk_groups.values():
+        rep = dict(max(group, key=lambda h: h.get("_score", 0)))
+        rep["matched_persons"] = [h["person"] for h in group]
+        result.append(rep)
+
+    result.extend(ungrouped)
+    result.sort(key=lambda h: -h.get("_score", 0))
+    return result
 
 
 # ---------------------------------------------------------------------------
@@ -134,7 +165,12 @@ class SessionCard(QFrame):
 
         top_row.addStretch()
 
-        if record.get("is_primary_author"):
+        matched_set = set(record.get("matched_persons") or [])
+        authors_all_check: list[str] = record.get("authors_all") or []
+        is_primary = record.get("is_primary_author") or (
+            bool(matched_set) and bool(authors_all_check) and authors_all_check[0] in matched_set
+        )
+        if is_primary:
             primary = QLabel("★ 1저자")
             primary.setStyleSheet("color: #c97b00; font-weight: bold;")
             top_row.addWidget(primary)
@@ -166,16 +202,21 @@ class SessionCard(QFrame):
             talk_label.setStyleSheet("color: #333333;")
             layout.addWidget(talk_label)
 
-        # --- footer: full author list (bolded: matched person) --------------
+        # --- footer: full author list (bolded: all matched persons) ---------
         person = record.get("person") or ""
         authors_all: list[str] = record.get("authors_all") or []
+        matched_persons: list[str] = record.get("matched_persons") or []
         display_authors = authors_all if authors_all else ([person] if person else [])
 
         if display_authors:
-            bold_name = _find_bold_author(person, display_authors)
+            if matched_persons:
+                bold_set = set(matched_persons)
+            else:
+                single = _find_bold_author(person, display_authors)
+                bold_set = {single} if single else set()
             parts = []
             for a in display_authors:
-                parts.append(f'<b>{a}</b>' if a == bold_name else a)
+                parts.append(f'<b>{a}</b>' if a in bold_set else a)
             authors_label = QLabel(', '.join(parts))
             authors_label.setTextFormat(Qt.RichText)
             authors_label.setWordWrap(True)
@@ -418,7 +459,9 @@ class SearchWindow(QWidget):
         try:
             try:
                 if mode == 1:
-                    results = matches_affiliation(query, self._records)
+                    results = _group_affil_results(
+                        matches_affiliation(query, self._records)
+                    )
                 else:
                     results = matches(query, self._records)
             except Exception as exc:

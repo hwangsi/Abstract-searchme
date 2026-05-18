@@ -19,16 +19,9 @@ class ParseWorker(QThread):
 
     def run(self) -> None:
         try:
-            from core.main import _detect_adapter, _wrap_generic
+            from core.adapters import load_pdf
 
-            adapter = _detect_adapter(self._pdf_path)
-            if adapter is not None:
-                records    = adapter.parse(self._pdf_path)
-                event_meta = getattr(adapter, "EVENT_META", {})
-            else:
-                from core.adapters.generic import parse as _gp
-                records    = _wrap_generic(_gp(self._pdf_path))
-                event_meta = {}
+            records, event_meta = load_pdf(self._pdf_path)
 
             if not records:
                 self.error.emit(

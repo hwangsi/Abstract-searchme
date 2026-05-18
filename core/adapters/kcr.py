@@ -5,12 +5,13 @@ Parses the structured KCR layout:
   Sep. DD (Day), HH:MM-HH:MM
   Room
   Chairperson(s):  Name  Affiliation
-  [Name  Affiliation]*          ← additional chairs
+  [Name  Affiliation]*          <- additional chairs
   TALK_CODE
   HH:MM or HH:MM-HH:MM
   Title
-  Author(s)                     ← comma-separated; only first = Speaker
-  Affiliation. email
+  Author1, Author2, ..., AuthorN   <- superscript refs inline (e.g. 'Name1')
+  1AffiliationA, 2AffiliationB     <- numbered; may span multiple lines
+  email (separate line, optional)
 
 Returns a flat list of role records (one per person per session).
 Role values: "chair" | "speaker" | "discussant"
@@ -19,6 +20,8 @@ Role values: "chair" | "speaker" | "discussant"
 import re
 from pathlib import Path
 import fitz
+
+from core.adapters.affil_refs import parse_affil_dict, resolve_affil, parse_author_with_refs
 
 EVENT_META = {
     "event_name": "KCR 2025",
@@ -53,7 +56,7 @@ def _is_list_page(lines: list[str]) -> bool:
 
 
 def _split_chair_line(text: str) -> tuple[str, str]:
-    """'Name  Affiliation' → (name, affiliation)."""
+    """'Name  Affiliation' -> (name, affiliation)."""
     text = text.replace("\x07", "").strip()
     m = re.match(r"^(.+?)\s{2,}(.+)$", text)
     if m:
@@ -82,12 +85,24 @@ def _is_affil_continuation(line: str) -> bool:
     return False
 
 
-def _first_author(raw: str) -> str:
-    """Extract first author from author line (may be comma-separated)."""
-    first = raw.split(",")[0].strip()
-    # Remove trailing superscript-like digits
-    first = re.sub(r"\d+$", "", first).strip()
-    return first
+def _parse_authors_with_refs(raw: str) -> tuple[list[str], list[list[int]]]:
+    """Comma-separated author line -> (clean names, per-author ref lists).
+
+    E.g. 'Joon-Il Choi1, Seo Yeon Youn2' -> (['Joon-Il Choi', 'Seo Yeon Youn'], [[1], [2]])
+    """
+    names: list[str] = []
+    refs_list: list[list[int]] = []
+    for token in raw.split(","):
+        name, refs = parse_author_with_refs(token)
+        if len(name.split()) >= 2:
+            names.append(name)
+            refs_list.append(refs)
+    return names, refs_list
+
+
+def _clean_affil(raw: str) -> str:
+    """Strip email and trailing punctuation from affiliation string."""
+    return _EMAIL_RE.sub("", raw).strip().rstrip(".,").strip()
 
 
 # ── main parser ────────────────────────────────────────────────────────────────
@@ -95,13 +110,10 @@ def _first_author(raw: str) -> str:
 def parse(pdf_path: str | Path) -> list[dict]:
     doc = fitz.open(str(pdf_path))
     page_lines: list[tuple[int, str]] = []  # (page_num_1based, text)
-    skip = set()
 
     for pn in range(doc.page_count):
         raw_lines = [l.strip() for l in doc[pn].get_text().splitlines() if l.strip()]
-        if _is_list_page(raw_lines):
-            skip.add(pn)
-        else:
+        if not _is_list_page(raw_lines):
             for l in raw_lines:
                 page_lines.append((pn + 1, l))
     doc.close()
@@ -113,12 +125,16 @@ def parse(pdf_path: str | Path) -> list[dict]:
     in_chairs = False
     current_label_role = "chair"  # "chair" | "discussant"
 
-    # Talk context (for speaker detection)
+    # Talk context
     talk_code = ""
     talk_time = ""
     talk_title_parts: list[str] = []
     in_talk_title = False
     in_talk_author = False
+    # pending_talk buffers (authors, refs, title, tcode, ttime, page) between
+    # the author line and the affiliation block.
+    pending_talk: dict | None = None
+    pending_affil_parts: list[str] = []
 
     def _emit_person(name, affil, role):
         records.append({
@@ -135,20 +151,33 @@ def parse(pdf_path: str | Path) -> list[dict]:
             "talk_title": "",
         })
 
-    def _emit_speaker(name, affil, title, tcode, ttime, page):
-        records.append({
-            "page": page,
-            "date": ctx["date"],
-            "time": ttime or ctx["time"],
-            "room": ctx["room"],
-            "session_code": ctx["code"],
-            "session_title": ctx["title"],
-            "role": "speaker",
-            "is_primary_author": True,
-            "person": name,
-            "affiliation": affil,
-            "talk_title": title,
-        })
+    def _flush_pending() -> None:
+        nonlocal pending_talk, pending_affil_parts
+        if pending_talk is None:
+            pending_affil_parts = []
+            return
+        affil_raw = _clean_affil(" ".join(pending_affil_parts))
+        affil_dict = parse_affil_dict(affil_raw)
+        authors = pending_talk["authors"]
+        refs_list = pending_talk["refs"]
+        for idx, (name, refs) in enumerate(zip(authors, refs_list)):
+            affil = resolve_affil(refs, affil_dict, fallback=affil_raw)
+            records.append({
+                "page": pending_talk["page"],
+                "date": ctx["date"],
+                "time": pending_talk["ttime"] or ctx["time"],
+                "room": ctx["room"],
+                "session_code": ctx["code"],
+                "session_title": ctx["title"],
+                "role": "speaker",
+                "is_primary_author": (idx == 0),
+                "person": name,
+                "affiliation": affil,
+                "talk_title": pending_talk["title"],
+                "authors_all": authors,
+            })
+        pending_talk = None
+        pending_affil_parts = []
 
     n = len(page_lines)
     i = 0
@@ -156,9 +185,10 @@ def parse(pdf_path: str | Path) -> list[dict]:
     while i < n:
         pn, line = page_lines[i]
 
-        # ── date line → new session ────────────────────────────────────────────
+        # ── date line -> new session ───────────────────────────────────────────
         dm = _DATE_RE.search(line)
         if dm:
+            _flush_pending()
             in_chairs = False
             in_talk_title = False
             in_talk_author = False
@@ -167,19 +197,16 @@ def parse(pdf_path: str | Path) -> list[dict]:
 
             date = dm.group(1)
             session_time = dm.group(2)
-            # Look back for session code + title (up to 6 lines back)
             code, title = "", ""
             for j in range(i - 1, max(i - 7, -1), -1):
                 candidate = page_lines[j][1]
                 m = _SESSION_HDR_RE.match(candidate)
                 if m and not _DATE_RE.search(candidate) and not _TIME_RE.search(candidate.split()[0] if candidate.split() else ""):
                     code_candidate = m.group(1).rstrip()
-                    # Exclude lines that look like room or section labels
                     if not _AFFIL_RE.search(code_candidate) and len(code_candidate) <= 20:
                         code = code_candidate
                         title = m.group(2).strip()
                         break
-            # Room: next non-date/chair line
             room = ""
             if i + 1 < n:
                 next_l = page_lines[i + 1][1]
@@ -188,6 +215,29 @@ def parse(pdf_path: str | Path) -> list[dict]:
             ctx = {"date": date, "time": session_time, "room": room, "code": code, "title": title, "page": pn}
             i += 1
             continue
+
+        # ── accumulate affiliation lines after author line ─────────────────────
+        if in_talk_author:
+            is_structural = (
+                _is_talk_code(line) or _DATE_RE.search(line)
+                or _CHAIR_RE.search(line) or _DISC_RE.search(line)
+            )
+            is_email_only = bool(_EMAIL_RE.search(line)) and not _EMAIL_RE.sub("", line).strip()
+
+            if is_email_only:
+                _flush_pending()
+                in_talk_author = False
+                i += 1
+                continue
+
+            if is_structural:
+                _flush_pending()
+                in_talk_author = False
+                # fall through to process the structural line below
+            else:
+                pending_affil_parts.append(line)
+                i += 1
+                continue
 
         # ── Chairperson / Moderator / 좌장 line ───────────────────────────────
         if _CHAIR_RE.search(line):
@@ -224,25 +274,20 @@ def parse(pdf_path: str | Path) -> list[dict]:
                 _emit_person(name, affil, current_label_role)
                 i += 1
                 continue
-            # Affiliation continuation (e.g. "Korea", "Medicine, Korea") → skip
             if _is_affil_continuation(line):
                 i += 1
                 continue
-            # Anything else ends the chair block
             in_chairs = False
 
         # ── talk code ──────────────────────────────────────────────────────────
         if _is_talk_code(line):
-            # Flush previous talk if any
-            if in_talk_author:
-                pass  # already emitted
+            _flush_pending()
             in_talk_title = True
             in_talk_author = False
             talk_code = line
             talk_time = ""
             talk_title_parts = []
             i += 1
-            # Next line might be a time
             if i < n:
                 candidate_time = page_lines[i][1]
                 if _TIME_RE.match(candidate_time) and len(candidate_time) <= 15:
@@ -252,39 +297,72 @@ def parse(pdf_path: str | Path) -> list[dict]:
 
         # ── talk title & speaker ───────────────────────────────────────────────
         if in_talk_title:
-            # Is this line the author (ends the title)?
-            # Heuristic: if it's an email-containing line, or looks like an affiliation
+            # Path B: affiliation/email line detected; last title_part is the author line
             if _EMAIL_RE.search(line) or (_AFFIL_RE.search(line) and _COUNTRY_RE.search(line)):
-                # Affiliation line — means previous line was the author
+                if talk_title_parts:
+                    author_line = talk_title_parts.pop()
+                    names, refs_list = _parse_authors_with_refs(author_line)
+                    title_str = " ".join(talk_title_parts)
+                    if names:
+                        pending_talk = {
+                            "authors": names,
+                            "refs": refs_list,
+                            "title": title_str,
+                            "tcode": talk_code,
+                            "ttime": talk_time,
+                            "page": pn,
+                        }
+                        is_email_only = (bool(_EMAIL_RE.search(line)) and
+                                         not _EMAIL_RE.sub("", line).strip())
+                        if not is_email_only:
+                            pending_affil_parts = [line]
+                            in_talk_author = True
+                        else:
+                            _flush_pending()
                 in_talk_title = False
-                in_talk_author = False
                 i += 1
                 continue
-            # Could be author or title
-            # If it has commas (multiple authors) or is a pure name (no colon, no digits in middle)
+
+            # Path A: author line heuristic
             title_so_far = " ".join(talk_title_parts)
             is_likely_author = (
                 talk_title_parts and
                 not line.endswith(":") and
                 not re.search(r"\d", line[:20]) and
                 (
-                    "," in line or  # multiple authors
-                    (not re.search(r"[.!?]$", line) and  # no sentence ending
-                     len(line.split()) <= 5 and          # short
-                     re.match(r"[A-Z][a-z]", line))     # starts like a name
+                    "," in line or
+                    (not re.search(r"[.!?]$", line) and
+                     len(line.split()) <= 5 and
+                     re.match(r"[A-Z][a-z]", line))
                 )
             )
             if is_likely_author:
-                first = _first_author(line)
-                _emit_speaker(first, "", title_so_far, talk_code, talk_time, pn)
-                in_talk_title = False
-                in_talk_author = True
+                names, refs_list = _parse_authors_with_refs(line)
+                if not names:
+                    name, refs = parse_author_with_refs(line)
+                    if name.strip():
+                        names = [name]
+                        refs_list = [refs]
+                if names:
+                    pending_talk = {
+                        "authors": names,
+                        "refs": refs_list,
+                        "title": title_so_far,
+                        "tcode": talk_code,
+                        "ttime": talk_time,
+                        "page": pn,
+                    }
+                    pending_affil_parts = []
+                    in_talk_title = False
+                    in_talk_author = True
                 i += 1
                 continue
+
             talk_title_parts.append(line)
             i += 1
             continue
 
         i += 1
 
+    _flush_pending()
     return records
