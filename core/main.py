@@ -5,7 +5,7 @@ import re
 from pathlib import Path
 import fitz
 
-from core.adapters import kcr, icr
+from core.adapters import kcr, icr, gbcc
 from core.adapters.generic import parse as generic_parse
 from core.search.matcher import matches
 
@@ -17,6 +17,8 @@ def _detect_adapter(pdf_path: Path):
         return kcr
     if "icr" in stem or "en-icr" in stem:
         return icr
+    if "gbcc" in stem or "global breast cancer" in stem:
+        return gbcc
 
     # Check PDF metadata
     try:
@@ -29,6 +31,8 @@ def _detect_adapter(pdf_path: Path):
             return kcr
         if "icr" in title:
             return icr
+        if "gbcc" in title or "global breast cancer" in title:
+            return gbcc
         if "corel" in creator:
             return icr  # CorelDRAW = ICR-style visual layout
     except Exception:
