@@ -277,3 +277,22 @@ def test_kcr_affiliation_snuh_total_count_not_regressed(kcr_normalized):
     assert len(hits) >= 49, (
         f"SNUH affiliation total count regressed: got {len(hits)}, expected >= 49"
     )
+
+
+# ---------------------------------------------------------------------------
+# Stage 5e-fix-4: new talk code formats + author heuristic guards
+# ---------------------------------------------------------------------------
+
+def test_kcr_affiliation_bundang_lower_bound(kcr_normalized):
+    """'Seoul National University Bundang' must return >= 20 deduped hits after fix-4.
+
+    Ground truth: ~25 PDF pages contain Bundang Hospital entries.
+    Before fix-4 the app returned only 10 (new talk code formats were not
+    recognized, so speaker records were never created for those sessions).
+    """
+    from core.search.matcher import matches_affiliation
+
+    hits = matches_affiliation("Seoul National University Bundang", kcr_normalized)
+    assert len(hits) >= 20, (
+        f"Bundang affiliation hit count regressed: got {len(hits)}, expected >= 20"
+    )

@@ -37,7 +37,12 @@ _SESSION_HDR_RE = re.compile(r"^(.{2,20}?)\s{2,}(.+)$")
 _CHAIR_RE = re.compile(r"Chairperson\(?s?\)?:|Moderator:|Chair:|좌장:")
 _DISC_RE = re.compile(r"Discussants?:|Panelists?:")
 _EXTRA_CHAIR_RE = re.compile(r"^([A-Z][a-z]+(?:[-\s][A-Z]?[a-z]+)+)\s{2,}([A-Z].+)$")
-_TALK_CODE_RE = re.compile(r"^[A-Z].{0,20}-[A-Z]{2}-\d+|^[A-Z]{2}\s\d{2}-\d{2}$|^\w+-\d+$")
+_TALK_CODE_RE = re.compile(
+    r"^[A-Z].{0,20}-[A-Z]{2}-\d+"          # e.g. existing format
+    r"|^[A-Z]{2}\s\d{2}-\d{2}$"             # e.g. SS 26-03
+    r"|^\w+-\d+$"                             # e.g. WORD-01
+    r"|^[A-Z]{2,4}\s\d{2,3}[-\s]+[A-Z]{2,4}(?:\([A-Za-z]+\))?-\d{2,3}$"  # IDP 04 NR-01 / SS 05- CV-01 / SE 10 NR(HN)-06
+)
 _COUNTRY_RE = re.compile(
     r"\b(Korea|USA|Japan|France|UK|Germany|Netherlands|Saudi Arabia|Belgium|"
     r"China|Italy|Spain|Egypt|UAE|Switzerland|Australia|Vietnam|Philippines|"
@@ -328,6 +333,7 @@ def parse(pdf_path: str | Path) -> list[dict]:
             is_likely_author = (
                 talk_title_parts and
                 not line.endswith(":") and
+                ":" not in line and          # subtitle continuations have colons
                 not re.search(r"\d", line[:20]) and
                 (
                     "," in line or
@@ -340,7 +346,8 @@ def parse(pdf_path: str | Path) -> list[dict]:
                 names, refs_list = _parse_authors_with_refs(line)
                 if not names:
                     name, refs = parse_author_with_refs(line)
-                    if name.strip():
+                    # require at least 2 words — single words are title continuations
+                    if name.strip() and len(name.split()) >= 2:
                         names = [name]
                         refs_list = [refs]
                 if names:
