@@ -1,4 +1,4 @@
-# Abstract Searcher v0.5.4
+# Abstract Searcher v0.5.5
 
 Conference program PDF searcher with a PySide6 desktop GUI and CLI.  
 Search sessions by **name** or **affiliation**, export to calendar / spreadsheet / text / HTML.
@@ -36,7 +36,8 @@ python -m desktop.main
 2. **Window 2 – Search**:
    - **Name search** — fuzzy match across all persons (chair / speaker / co-author)
    - **Affiliation search** — find everyone from a hospital or university
-3. **Export** any result set to `.ics` / `.xlsx` / `.txt`
+   - **Sort** results by role / time / abstract page
+3. **Export** any result set to `.ics` / `.xlsx` / `.txt` (buttons in the toolbar)
 
 ---
 
@@ -198,6 +199,7 @@ python -m pytest tests/ -v
 
 | Version | Description |
 |---|---|
+| v0.5.5 | UI: larger font (15pt cards, 18pt base), filled radio buttons, sort by role/time/page, export buttons in toolbar |
 | v0.5.4 | KCR: new talk code formats (IDP/JS/KSR/SE) + author heuristic guards → Bundang Hospital search 10→57 hits |
 | v0.5.3 | KCR: superscript-based per-author affiliation mapping (¹²³) |
 | v0.5.2 | KCR: co-author emit + normalize_records() dedup/invariant enforcement |

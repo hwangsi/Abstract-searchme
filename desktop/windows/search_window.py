@@ -22,6 +22,7 @@ from PySide6.QtGui import QFont
 from PySide6.QtWidgets import (
     QApplication,
     QButtonGroup,
+    QComboBox,
     QFileDialog,
     QFrame,
     QHBoxLayout,
@@ -65,6 +66,23 @@ ROLE_COLOR = {
     "discussant": "#c2671a",    # orange
     "panelist": "#7b2d8b",      # purple
 }
+
+ROLE_ORDER = {"speaker": 0, "chair": 1, "discussant": 2, "panelist": 3}
+
+_MONTH_NUM = {
+    "Jan": 1, "Feb": 2, "Mar": 3, "Apr": 4, "May": 5, "Jun": 6,
+    "Jul": 7, "Aug": 8, "Sep": 9, "Oct": 10, "Nov": 11, "Dec": 12,
+}
+
+
+def _time_sort_key(r: dict) -> tuple:
+    date_str = r.get("date") or ""
+    time_str = r.get("time") or ""
+    m = re.match(r"(\w+)\.?\s+(\d+)", date_str)
+    month = _MONTH_NUM.get(m.group(1)[:3].capitalize(), 0) if m else 0
+    day = int(m.group(2)) if m else 0
+    start = time_str.split("-")[0].strip() if time_str else ""
+    return (month, day, start)
 
 
 def _sanitize_filename(name: str) -> str:
@@ -127,7 +145,9 @@ class SessionCard(QFrame):
                 background-color: #ffffff;
                 border: 1px solid #d0d0d0;
                 border-radius: 6px;
-                font-size: 14pt;
+            }
+            #SessionCard QLabel {
+                font-size: 15pt;
             }
         """)
 
@@ -269,7 +289,11 @@ class SearchWindow(QWidget):
         self._current_query: str = ""
 
         self.setWindowTitle("Abstract Searcher")
-        self.resize(760, 760)
+        self.resize(1100, 900)
+
+        base_font = QFont()
+        base_font.setPointSize(18)
+        self.setFont(base_font)
 
         self._build_ui()
 
@@ -284,7 +308,6 @@ class SearchWindow(QWidget):
         root.addWidget(self._build_search_bar())
         root.addWidget(self._build_count_bar())
         root.addWidget(self._build_results_area(), 1)
-        root.addWidget(self._build_export_bar())
 
     def _build_header(self) -> QWidget:
         bar = QFrame()
@@ -324,8 +347,26 @@ class SearchWindow(QWidget):
         layout.setContentsMargins(12, 12, 12, 12)
         layout.setSpacing(8)
 
+        _radio_style = """
+            QRadioButton { spacing: 10px; }
+            QRadioButton::indicator {
+                width: 28px; height: 28px;
+                border-radius: 14px;
+                border: 2px solid #999999;
+                background-color: #ffffff;
+            }
+            QRadioButton::indicator:checked {
+                background-color: #1e6fbf;
+                border: 2px solid #1e6fbf;
+            }
+            QRadioButton::indicator:hover {
+                border: 2px solid #1e6fbf;
+            }
+        """
         self._radio_name = QRadioButton("이름으로")
+        self._radio_name.setStyleSheet(_radio_style)
         self._radio_affil = QRadioButton("소속으로")
+        self._radio_affil.setStyleSheet(_radio_style)
         self._radio_name.setChecked(True)
 
         self._mode_group = QButtonGroup(self)
@@ -364,6 +405,45 @@ class SearchWindow(QWidget):
         layout.addWidget(self.count_label)
         layout.addStretch()
 
+        sort_label = QLabel("정렬:")
+        sort_label.setStyleSheet("color: #555555;")
+        layout.addWidget(sort_label)
+
+        self._sort_combo = QComboBox()
+        self._sort_combo.addItems(["기본순", "역할별", "시간별", "페이지별"])
+        self._sort_combo.currentIndexChanged.connect(self._on_sort_changed)
+        layout.addWidget(self._sort_combo)
+
+        layout.addSpacing(16)
+
+        _btn_style = """
+            QPushButton {
+                background-color: #1e6fbf;
+                color: white;
+                border: none;
+                border-radius: 5px;
+                padding: 4px 14px;
+            }
+            QPushButton:hover { background-color: #1a5fa8; }
+            QPushButton:disabled { background-color: #a0b8d8; }
+        """
+        self.txt_btn = QPushButton("TXT")
+        self.txt_btn.setStyleSheet(_btn_style)
+        self.txt_btn.clicked.connect(self._on_export_txt)
+        layout.addWidget(self.txt_btn)
+
+        self.xlsx_btn = QPushButton("XLSX")
+        self.xlsx_btn.setStyleSheet(_btn_style)
+        self.xlsx_btn.clicked.connect(self._on_export_xlsx)
+        layout.addWidget(self.xlsx_btn)
+
+        self.ics_btn = QPushButton("ICS")
+        self.ics_btn.setStyleSheet(_btn_style)
+        self.ics_btn.clicked.connect(self._on_export_ics)
+        layout.addWidget(self.ics_btn)
+
+        self._set_export_enabled(False)
+
         return bar
 
     def _build_results_area(self) -> QWidget:
@@ -379,33 +459,6 @@ class SearchWindow(QWidget):
 
         self.scroll.setWidget(self.results_container)
         return self.scroll
-
-    def _build_export_bar(self) -> QWidget:
-        bar = QFrame()
-        bar.setStyleSheet(
-            "background-color: #f4f5f7; border-top: 1px solid #d8d8d8;"
-        )
-        layout = QHBoxLayout(bar)
-        layout.setContentsMargins(12, 10, 12, 10)
-        layout.setSpacing(10)
-
-        layout.addStretch()
-
-        self.txt_btn = QPushButton("TXT 저장")
-        self.txt_btn.clicked.connect(self._on_export_txt)
-        layout.addWidget(self.txt_btn)
-
-        self.xlsx_btn = QPushButton("XLSX 저장")
-        self.xlsx_btn.clicked.connect(self._on_export_xlsx)
-        layout.addWidget(self.xlsx_btn)
-
-        self.ics_btn = QPushButton("ICS 저장")
-        self.ics_btn.clicked.connect(self._on_export_ics)
-        layout.addWidget(self.ics_btn)
-
-        self._set_export_enabled(False)
-
-        return bar
 
     # -- public API ----------------------------------------------------------
 
@@ -444,6 +497,20 @@ class SearchWindow(QWidget):
         self._clear_results()
         self._current_results = []
         self._set_export_enabled(False)
+
+    def _apply_sort(self, results: list[dict]) -> list[dict]:
+        idx = self._sort_combo.currentIndex()
+        if idx == 1:  # 역할별
+            return sorted(results, key=lambda r: ROLE_ORDER.get((r.get("role") or "").lower(), 99))
+        if idx == 2:  # 시간별
+            return sorted(results, key=_time_sort_key)
+        if idx == 3:  # 페이지별
+            return sorted(results, key=lambda r: r.get("page") or 9999)
+        return results  # 기본순 (검색 결과 순서 유지)
+
+    def _on_sort_changed(self) -> None:
+        if self._current_results:
+            self._render_results(self._current_results)
 
     def _on_search(self) -> None:
         query = self.search_input.text().strip()
@@ -486,9 +553,8 @@ class SearchWindow(QWidget):
 
     def _render_results(self, results: list[dict]) -> None:
         self._clear_results()
-        for rec in results:
+        for rec in self._apply_sort(results):
             card = SessionCard(rec)
-            # insert before the trailing stretch
             self.results_layout.insertWidget(
                 self.results_layout.count() - 1, card
             )
