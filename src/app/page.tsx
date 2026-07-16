@@ -105,13 +105,19 @@ export default function HomePage() {
         {error && <div className="status error">{error}</div>}
       </div>
 
-      <div className="toolbar"><h2 style={{ margin: 0, fontSize: "1.1rem" }}>등록된 학회</h2></div>
+      <div className="toolbar">
+        <h2 style={{ margin: 0, fontSize: "1.1rem" }}>등록된 학회</h2>
+        <Link href="/subs">🔔 내 알림 관리</Link>
+      </div>
       {confs.length === 0 && <div className="card conf-meta">아직 등록된 학회가 없습니다.</div>}
       {confs.map((c) => (
         <div className="card conf-item" key={c.id}>
           <div>
             {c.status === "ready" ? (
-              <Link href={`/conf/${c.id}`}>{c.title}</Link>
+              <>
+                <Link href={`/conf/${c.id}`}>{c.title}</Link>
+                {c.adapter === "generic" && <span className="badge other"> 일반 파서</span>}
+              </>
             ) : (
               <span>
                 {c.title}{" "}

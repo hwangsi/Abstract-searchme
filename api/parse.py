@@ -133,6 +133,17 @@ class handler(BaseHTTPRequestHandler):
             return db.send_json(self, 400, {"error": "url must be a Vercel Blob URL"})
 
         with db.get_conn() as conn:
+            # Upload abuse guard (design §6): cache hits are unaffected — only
+            # NEW conference creation is limited.
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT count(*) FROM conferences WHERE created_at > now() - interval '1 hour'"
+                )
+                if cur.fetchone()[0] >= 10:
+                    return db.send_json(self, 429, {
+                        "error": "시간당 신규 업로드 한도(10건)를 초과했습니다. 잠시 후 다시 시도해 주세요."
+                    })
+
             # Claim the hash (idempotent). ON CONFLICT → someone else owns it.
             with conn.cursor() as cur:
                 cur.execute(

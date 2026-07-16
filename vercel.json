@@ -28,6 +28,10 @@
     "api/cron.py": {
       "maxDuration": 120,
       "includeFiles": "{core,api/_lib}/**"
+    },
+    "api/subs.py": {
+      "maxDuration": 15,
+      "includeFiles": "{core,api/_lib}/**"
     }
   },
   "crons": [

@@ -14,6 +14,14 @@ const ROLE_BADGE: Record<string, string> = {
 
 const subKey = (conf: string, q: string) => `push-sub:${conf}:${q}`;
 
+const OFFSET_CHOICES = [
+  { min: 10, label: "10분 전" },
+  { min: 30, label: "30분 전" },
+  { min: 60, label: "1시간 전" },
+  { min: 180, label: "3시간 전" },
+  { min: 1440, label: "1일 전" },
+];
+
 export default function ConferencePage() {
   const { id } = useParams<{ id: string }>();
   const [q, setQ] = useState("");
@@ -28,10 +36,23 @@ export default function ConferencePage() {
   const [subBusy, setSubBusy] = useState(false);
   const [subMsg, setSubMsg] = useState("");
   const [showIosGuide, setShowIosGuide] = useState(false);
+  const [offsets, setOffsets] = useState<number[]>([60, 10]);
+
+  useEffect(() => {
+    // /subs 페이지에서 넘어올 때 ?q= 프리필 (useSearchParams의 Suspense 요구 회피)
+    const qs = new URLSearchParams(window.location.search).get("q");
+    if (qs) setQ(qs);
+  }, []);
 
   useEffect(() => {
     if (q.trim()) setSubscribed(!!localStorage.getItem(subKey(id, q.trim())));
   }, [id, q]);
+
+  function toggleOffset(min: number) {
+    setOffsets((prev) =>
+      prev.includes(min) ? prev.filter((o) => o !== min) : [...prev, min].sort((a, b) => b - a)
+    );
+  }
 
   async function toggleNotify() {
     const query = q.trim();
@@ -62,16 +83,19 @@ export default function ConferencePage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           confId: Number(id), q: query, mode, threshold,
-          offsetsMin: [60, 10], subscription,
+          offsetsMin: offsets.length ? offsets : [60, 10], subscription,
         }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? `구독 실패 (HTTP ${res.status})`);
       localStorage.setItem(subKey(id, query), JSON.stringify({ endpoint: subscription.endpoint }));
       setSubscribed(true);
+      const offLabel = (offsets.length ? offsets : [60, 10])
+        .map((m) => OFFSET_CHOICES.find((c) => c.min === m)?.label ?? `${m}분 전`)
+        .join("·");
       setSubMsg(
         data.reminders > 0
-          ? `세션 ${data.sessions}건 × 시작 60분·10분 전 알림 ${data.reminders}건 예약 완료`
+          ? `세션 ${data.sessions}건 × ${offLabel} 알림 ${data.reminders}건 예약 완료`
           : "예약할 미래 세션이 없습니다 (지난 학회이거나 시간 파싱 불가)."
       );
     } catch (e) {
@@ -116,7 +140,16 @@ export default function ConferencePage() {
       <h1><Link href="/">Abstract Searcher</Link></h1>
       <p className="subtitle">
         {conf ? `${conf.title} — ${conf.location} (${conf.tz})` : `학회 #${id}`}
+        {" · "}
+        <Link href="/subs">🔔 내 알림</Link>
       </p>
+
+      {conf?.adapter === "generic" && (
+        <div className="card warn">
+          ⚠️ 이 학회는 전용 파서가 없어 일반 파서로 처리됐습니다. 검색 결과가 부정확하거나
+          누락될 수 있으니 원본 PDF와 교차 확인하세요.
+        </div>
+      )}
 
       <form className="card search-form" onSubmit={search}>
         <div className="search-row">
@@ -174,6 +207,21 @@ export default function ConferencePage() {
               )}
             </div>
           </div>
+          {sorted.length > 0 && !subscribed && (
+            <div className="card chips-row">
+              <span className="conf-meta">알림 시점:</span>
+              {OFFSET_CHOICES.map((c) => (
+                <button
+                  key={c.min}
+                  type="button"
+                  className={`chip${offsets.includes(c.min) ? " on" : ""}`}
+                  onClick={() => toggleOffset(c.min)}
+                >
+                  {c.label}
+                </button>
+              ))}
+            </div>
+          )}
           {subMsg && <div className="card conf-meta">{subMsg}</div>}
 
           {showIosGuide && (
