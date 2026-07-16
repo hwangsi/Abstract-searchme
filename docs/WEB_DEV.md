@@ -7,7 +7,8 @@
 > + Upstash QStash(Marketplace) 연결, GitHub 자동 배포(`vercel git connect`) 활성.
 > VAPID 키/CRON_SECRET/PUSH_BASE_URL 환경변수 등록 완료.
 > 검증 완료: ICR 2026 파싱·검색·ics E2E, 푸시 구독/해제, QStash→/api/push 전달(서명 검증, 200),
-> 무서명 요청 401 거부. 실기기 알림 수신은 미래 세션이 있는 학회 PDF에서 테스트 예정.
+> 무서명 요청 401 거부, **실기기 수신 확인(2026-07-17, iPhone PWA/Apple Web Push,
+> 테스트 학회로 60분·10분 전 알림 정시 도착)**. 테스트 데이터는 삭제됨.
 
 ## 1회 셋업
 
