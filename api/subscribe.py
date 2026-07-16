@@ -84,7 +84,8 @@ class handler(BaseHTTPRequestHandler):
                         if fire_at > now:
                             rows.append((sub_id, h["id"], fire_at))
                 cur.executemany(
-                    "INSERT INTO scheduled_pushes (sub_id, record_id, fire_at) VALUES (%s,%s,%s)",
+                    "INSERT INTO scheduled_pushes (sub_id, record_id, fire_at, status) "
+                    "VALUES (%s,%s,%s,'pending')",
                     rows,
                 )
             conn.commit()

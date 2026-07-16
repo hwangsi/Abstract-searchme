@@ -55,5 +55,7 @@ CREATE TABLE IF NOT EXISTS scheduled_pushes (
   record_id   bigint NOT NULL REFERENCES records ON DELETE CASCADE,
   fire_at     timestamptz NOT NULL,
   qstash_id   text,
-  status      text NOT NULL DEFAULT 'scheduled' -- scheduled | sent | failed | cancelled
+  -- pending: not yet handed to QStash (outside its 7-day delay window)
+  -- scheduled: QStash message published; sent/failed: delivery outcome
+  status      text NOT NULL DEFAULT 'pending' -- pending | scheduled | sent | failed | cancelled
 );
