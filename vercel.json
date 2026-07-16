@@ -1,0 +1,21 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "functions": {
+    "api/parse.py": {
+      "maxDuration": 300,
+      "includeFiles": "{core,api/_lib}/**"
+    },
+    "api/search.py": {
+      "maxDuration": 30,
+      "includeFiles": "{core,api/_lib}/**"
+    },
+    "api/ics.py": {
+      "maxDuration": 30,
+      "includeFiles": "{core,api/_lib}/**"
+    },
+    "api/conferences.py": {
+      "maxDuration": 15,
+      "includeFiles": "{core,api/_lib}/**"
+    }
+  }
+}

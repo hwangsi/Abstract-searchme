@@ -1,0 +1,22 @@
+# Not needed by the web service — keeps the deploy bundle small.
+*.pdf
+/*.txt
+/*.ics
+/requirements.txt
+/requirements-dev.txt
+/AbstractSearcher.spec
+/build_win.bat
+.venv
+.pytest_cache
+__pycache__
+dist
+build
+desktop
+cli
+tests
+results
+data
+docs
+scripts
+node_modules
+.next

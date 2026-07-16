@@ -21,6 +21,15 @@ build/AbstractSearcher/
 *.spec.bak
 __pycache__/
 
+# Web (Next.js / Vercel)
+node_modules/
+.next/
+.vercel/
+.env
+.env*.local
+next-env.d.ts
+*.tsbuildinfo
+
 # OS
 .DS_Store
 Thumbs.db
