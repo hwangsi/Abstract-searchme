@@ -2,10 +2,12 @@
 
 설계: [WEB_SERVICE_DESIGN.md](WEB_SERVICE_DESIGN.md) · 스택: Next.js(App Router) + Vercel Python Functions + Neon Postgres + Vercel Blob
 
-> **배포 상태 (2026-07-16):** 프로덕션 https://abstract-searcher.vercel.app 가동 중.
-> Vercel 프로젝트 `abstract-searcher` + Neon(Marketplace, `DATABASE_URL`) + Blob store
-> `abstract-searcher-pdfs` 연결 완료, 스키마 적용 완료, ICR 2026 E2E 검증 완료.
-> 남은 수동 작업: Vercel 계정에 GitHub 로그인 연결 후 `vercel git connect` (푸시 자동 배포용).
+> **배포 상태 (2026-07-17, M2까지):** 프로덕션 https://abstract-searcher.vercel.app 가동 중.
+> Vercel 프로젝트 `abstract-searcher` + Neon(`DATABASE_URL`) + Blob(`abstract-searcher-pdfs`)
+> + Upstash QStash(Marketplace) 연결, GitHub 자동 배포(`vercel git connect`) 활성.
+> VAPID 키/CRON_SECRET/PUSH_BASE_URL 환경변수 등록 완료.
+> 검증 완료: ICR 2026 파싱·검색·ics E2E, 푸시 구독/해제, QStash→/api/push 전달(서명 검증, 200),
+> 무서명 요청 401 거부. 실기기 알림 수신은 미래 세션이 있는 학회 PDF에서 테스트 예정.
 
 ## 1회 셋업
 
