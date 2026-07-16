@@ -116,10 +116,15 @@ def send_json(h, status: int, obj: Any) -> None:
 
 
 def read_json_body(h) -> dict:
+    """Read a JSON request body. Falls back to reading to EOF when
+    Content-Length is absent (the Vercel runtime buffers bodies in BytesIO,
+    so an unbounded read cannot block)."""
     length = int(h.headers.get("Content-Length") or 0)
-    if length <= 0 or length > 1_000_000:
+    if length > 1_000_000:
         return {}
     try:
-        return json.loads(h.rfile.read(length).decode("utf-8"))
-    except (ValueError, UnicodeDecodeError):
+        raw = h.rfile.read(length) if length > 0 else h.rfile.read()
+        return json.loads(raw.decode("utf-8"))
+    except (ValueError, UnicodeDecodeError, OSError) as e:
+        h._body_err = repr(e)[:120]  # surfaced in 400 diagnostics
         return {}

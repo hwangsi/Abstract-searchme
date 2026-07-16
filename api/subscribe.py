@@ -38,7 +38,19 @@ class handler(BaseHTTPRequestHandler):
 
         if not (conf_id and query and offsets and endpoint.startswith("https://")
                 and keys.get("p256dh") and keys.get("auth")):
-            return db.send_json(self, 400, {"error": "invalid subscription request"})
+            return db.send_json(self, 400, {
+                "error": "invalid subscription request",
+                "fields": {  # booleans only — helps callers fix their payload
+                    "bodyParsed": bool(body),
+                    "bodyErr": getattr(self, "_body_err", ""),
+                    "confId": bool(conf_id),
+                    "q": bool(query),
+                    "offsetsMin": bool(offsets),
+                    "endpointHttps": endpoint.startswith("https://"),
+                    "p256dh": bool(keys.get("p256dh")),
+                    "auth": bool(keys.get("auth")),
+                },
+            })
 
         now = datetime.now(timezone.utc)
         with db.get_conn() as conn:
