@@ -2,7 +2,8 @@
 
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { ensurePushSubscription, isIOS, isStandalone } from "@/lib/push";
 import type { Conference, Hit } from "@/lib/types";
 
 const ROLE_BADGE: Record<string, string> = {
@@ -10,6 +11,8 @@ const ROLE_BADGE: Record<string, string> = {
   chair: "chair",
   discussant: "discussant",
 };
+
+const subKey = (conf: string, q: string) => `push-sub:${conf}:${q}`;
 
 export default function ConferencePage() {
   const { id } = useParams<{ id: string }>();
@@ -21,6 +24,62 @@ export default function ConferencePage() {
   const [hits, setHits] = useState<Hit[] | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [subscribed, setSubscribed] = useState(false);
+  const [subBusy, setSubBusy] = useState(false);
+  const [subMsg, setSubMsg] = useState("");
+  const [showIosGuide, setShowIosGuide] = useState(false);
+
+  useEffect(() => {
+    if (q.trim()) setSubscribed(!!localStorage.getItem(subKey(id, q.trim())));
+  }, [id, q]);
+
+  async function toggleNotify() {
+    const query = q.trim();
+    if (!query || !hits) return;
+    setSubBusy(true);
+    setSubMsg("");
+    try {
+      if (subscribed) {
+        const saved = JSON.parse(localStorage.getItem(subKey(id, query)) ?? "{}");
+        await fetch("/api/subscribe", {
+          method: "DELETE",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ confId: Number(id), q: query, endpoint: saved.endpoint }),
+        });
+        localStorage.removeItem(subKey(id, query));
+        setSubscribed(false);
+        setSubMsg("알림을 해제했습니다.");
+        return;
+      }
+      // iOS Safari can only ask notification permission inside an installed PWA (design §7)
+      if (isIOS() && !isStandalone()) {
+        setShowIosGuide(true);
+        return;
+      }
+      const subscription = await ensurePushSubscription();
+      const res = await fetch("/api/subscribe", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          confId: Number(id), q: query, mode, threshold,
+          offsetsMin: [60, 10], subscription,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? `구독 실패 (HTTP ${res.status})`);
+      localStorage.setItem(subKey(id, query), JSON.stringify({ endpoint: subscription.endpoint }));
+      setSubscribed(true);
+      setSubMsg(
+        data.reminders > 0
+          ? `세션 ${data.sessions}건 × 시작 60분·10분 전 알림 ${data.reminders}건 예약 완료`
+          : "예약할 미래 세션이 없습니다 (지난 학회이거나 시간 파싱 불가)."
+      );
+    } catch (e) {
+      setSubMsg(e instanceof Error ? e.message : String(e));
+    } finally {
+      setSubBusy(false);
+    }
+  }
 
   const searchUrl = (base: string) =>
     `${base}?conf=${id}&q=${encodeURIComponent(q)}&mode=${mode}&threshold=${threshold}`;
@@ -104,12 +163,37 @@ export default function ConferencePage() {
                 <option value="score">정확도순</option>
               </select>
               {sorted.length > 0 && (
-                <a className="btn btn-secondary" href={searchUrl("/api/ics")}>
-                  📅 캘린더(.ics)
-                </a>
+                <>
+                  <a className="btn btn-secondary" href={searchUrl("/api/ics")}>
+                    📅 캘린더(.ics)
+                  </a>
+                  <button onClick={toggleNotify} disabled={subBusy}>
+                    {subBusy ? "처리 중…" : subscribed ? "🔕 알림 해제" : "🔔 세션 알림 받기"}
+                  </button>
+                </>
               )}
             </div>
           </div>
+          {subMsg && <div className="card conf-meta">{subMsg}</div>}
+
+          {showIosGuide && (
+            <div className="overlay" onClick={() => setShowIosGuide(false)}>
+              <div className="card overlay-card" onClick={(e) => e.stopPropagation()}>
+                <h3 style={{ marginTop: 0 }}>iPhone 알림 설정 방법</h3>
+                <p>iPhone은 홈 화면에 추가된 앱에서만 알림을 받을 수 있습니다:</p>
+                <ol>
+                  <li>Safari 하단의 <strong>공유 버튼</strong> (⬆️) 탭</li>
+                  <li><strong>"홈 화면에 추가"</strong> 선택</li>
+                  <li>홈 화면의 <strong>Abstracts</strong> 아이콘으로 다시 열기</li>
+                  <li>같은 검색 후 <strong>🔔 세션 알림 받기</strong> 다시 탭</li>
+                </ol>
+                <p className="conf-meta">
+                  캘린더 알림이 더 편하면 📅 캘린더(.ics) 버튼으로 폰 캘린더에 넣어도 됩니다.
+                </p>
+                <button onClick={() => setShowIosGuide(false)}>확인</button>
+              </div>
+            </div>
+          )}
 
           {sorted.length === 0 && (
             <div className="card conf-meta">

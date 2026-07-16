@@ -16,6 +16,21 @@
     "api/conferences.py": {
       "maxDuration": 15,
       "includeFiles": "{core,api/_lib}/**"
+    },
+    "api/subscribe.py": {
+      "maxDuration": 60,
+      "includeFiles": "{core,api/_lib}/**"
+    },
+    "api/push.py": {
+      "maxDuration": 30,
+      "includeFiles": "{core,api/_lib}/**"
+    },
+    "api/cron.py": {
+      "maxDuration": 120,
+      "includeFiles": "{core,api/_lib}/**"
     }
-  }
+  },
+  "crons": [
+    { "path": "/api/cron", "schedule": "30 15 * * *" }
+  ]
 }

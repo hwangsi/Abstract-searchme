@@ -1,0 +1,13 @@
+{
+  "name": "Abstract Searcher",
+  "short_name": "Abstracts",
+  "description": "학회 프로그램 PDF에서 내 발표 일정 찾기 + 세션 알림",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f6f7f9",
+  "theme_color": "#2563eb",
+  "icons": [
+    { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+  ]
+}
