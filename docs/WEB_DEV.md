@@ -2,6 +2,11 @@
 
 설계: [WEB_SERVICE_DESIGN.md](WEB_SERVICE_DESIGN.md) · 스택: Next.js(App Router) + Vercel Python Functions + Neon Postgres + Vercel Blob
 
+> **배포 상태 (2026-07-16):** 프로덕션 https://abstract-searcher.vercel.app 가동 중.
+> Vercel 프로젝트 `abstract-searcher` + Neon(Marketplace, `DATABASE_URL`) + Blob store
+> `abstract-searcher-pdfs` 연결 완료, 스키마 적용 완료, ICR 2026 E2E 검증 완료.
+> 남은 수동 작업: Vercel 계정에 GitHub 로그인 연결 후 `vercel git connect` (푸시 자동 배포용).
+
 ## 1회 셋업
 
 1. **Vercel 프로젝트 생성** — 레포 루트가 프로젝트 루트 (Root Directory 설정 없음).
