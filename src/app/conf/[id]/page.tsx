@@ -150,6 +150,12 @@ export default function ConferencePage() {
           누락될 수 있으니 원본 PDF와 교차 확인하세요.
         </div>
       )}
+      {conf?.adapter === "llm" && (
+        <div className="card warn">
+          🤖 이 학회는 AI 파서로 추출됐습니다. 대체로 정확하지만 시간·이름 오류가 있을 수
+          있으니 중요한 일정은 원본 PDF와 교차 확인하세요.
+        </div>
+      )}
 
       <form className="card search-form" onSubmit={search}>
         <div className="search-row">

@@ -117,6 +117,7 @@ export default function HomePage() {
               <>
                 <Link href={`/conf/${c.id}`}>{c.title}</Link>
                 {c.adapter === "generic" && <span className="badge other"> 일반 파서</span>}
+                {c.adapter === "llm" && <span className="badge other"> AI 파서</span>}
               </>
             ) : (
               <span>

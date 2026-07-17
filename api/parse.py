@@ -189,6 +189,17 @@ class handler(BaseHTTPRequestHandler):
                     adapter = adapter_mod.__name__.split(".")[-1] if adapter_mod else "generic"
                     records, meta = load_pdf(pdf_path)
 
+                    if adapter == "generic":
+                        # LLM-assisted fallback (M3): once per sha256, fail-soft.
+                        from _lib import llmparse
+                        from core.adapters.post import normalize_records
+
+                        hint = Path(filename).stem or "unknown conference"
+                        llm_records = llmparse.refine_with_llm(pdf_path, hint)
+                        if llm_records:
+                            records = normalize_records(llm_records)
+                            adapter = "llm"
+
                 title = meta.get("event_name") or Path(filename).stem or "(untitled)"
                 tz_name = meta.get("event_timezone") or "UTC"
                 _derive_times(records, title, tz_name)
