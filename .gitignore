@@ -13,6 +13,9 @@ venv/
 
 # Claude internal
 .claude/
+.agents/
+.omc/
+skills-lock.json
 
 # PyInstaller build artifacts
 dist/
