@@ -4,7 +4,40 @@ Conference program PDF searcher with a PySide6 desktop GUI and CLI.
 Search sessions by **name** or **affiliation**, export to calendar / spreadsheet / text / HTML.
 
 Tested for physicians attending KCR, ICR, and GBCC — extensible to other conferences.
-Also available as a web service with push reminders: see `docs/WEB_SERVICE_DESIGN.md` and `docs/WEB_DEV.md`.
+
+---
+
+## 🌐 Web Service (no install needed)
+
+**Live at: https://abstract-searcher.vercel.app**
+
+Upload a program book once, search your name, get your schedule on your phone —
+including push notifications before each session.
+
+### How to use
+
+1. **Upload** — drag & drop the conference program PDF (≤200MB). If a colleague
+   already uploaded the same PDF, parsing is skipped and you go straight to search.
+2. **Search** — by **name** (e.g. `Sung Hwang`) or **affiliation** (e.g.
+   `Seoul National University Bundang`). Adjust the accuracy slider if a name
+   spelling differs (try surname only, or full English name).
+3. **Export / remind** — from the results:
+   - **📅 캘린더(.ics)** — import your sessions into Google/Apple Calendar or Outlook
+     (correct conference timezone, alarms work offline).
+   - **🔔 세션 알림 받기** — web push notifications before each session; pick offsets
+     (10 min / 30 min / 1 h / 3 h / 1 day). Manage or cancel anytime at
+     [/subs](https://abstract-searcher.vercel.app/subs).
+4. **iPhone note** — iOS allows push only for installed web apps: Safari →
+   Share (⬆️) → **Add to Home Screen**, then open from the home-screen icon and
+   subscribe. (Android/desktop Chrome works directly.)
+
+KCR, ICR, and GBCC use dedicated parsers. Other conferences fall back to an
+**AI-assisted parser** (marked with a 🤖 badge — double-check critical times
+against the original PDF). Sharing is link-based: anyone with the URL can search
+conferences already uploaded — no account needed.
+
+Self-hosting / architecture: see [`docs/WEB_SERVICE_DESIGN.md`](docs/WEB_SERVICE_DESIGN.md)
+and [`docs/WEB_DEV.md`](docs/WEB_DEV.md) (Vercel + Neon Postgres + Blob + QStash).
 
 ---
 
@@ -18,7 +51,7 @@ Also available as a web service with push reminders: see `docs/WEB_SERVICE_DESIG
 
 ---
 
-## Desktop App (recommended)
+## Desktop App
 
 ### Pre-built binary
 
