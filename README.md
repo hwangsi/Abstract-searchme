@@ -3,7 +3,8 @@
 Conference program PDF searcher with a PySide6 desktop GUI and CLI.  
 Search sessions by **name** or **affiliation**, export to calendar / spreadsheet / text / HTML.
 
-Tested for physicians attending KCR, ICR, and GBCC.
+Tested for physicians attending KCR, ICR, and GBCC — extensible to other conferences.
+Also available as a web service with push reminders: see `docs/WEB_SERVICE_DESIGN.md` and `docs/WEB_DEV.md`.
 
 ---
 
